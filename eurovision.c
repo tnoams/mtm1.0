@@ -10,30 +10,37 @@
  *
  * the following functions are available:
  *
- *     eurovisionCreate - makes a eurovision competition.
- *     eurovisionDestroy - destroys the whole eurovision.
- *     eurovisionAddJudge - adds a judge
- *     eurovisionRemoveJudge - removes a judge
- *     eurovisionAddState - adds a state
- *     eurovisionRemoveState - removes a state
+ *   ~  eurovisionCreate - makes a eurovision competition.
+ *   ~  eurovisionDestroy - destroys the whole eurovision.
+ *   ~  eurovisionAddJudge - adds a judge
+ *   ~  eurovisionRemoveJudge - removes a judge
+ *   ~  eurovisionAddState - adds a state
+ *   ~  eurovisionRemoveState - removes a state
  *     eurovisionAddVote - adds a single vote
  *     eurovisionRemoveVote - removes a single vote
  *     eurovisionRunContest - returns a list of who got most points to who got the least point
  *     eurovisionRunAudienceFavorite - returns a list of most to least popular states
  *     eurovisionRunFriendlyStates - returns a list of which state was most popular in which state
  *
- * if we need more stuff we will add them
 */
 
 /* ADT for judges part of the eurovision */
 
 typedef struct judges {
-    struct  judges *previous;
     int id;
     const char* name;
     int *vote;
     struct judges *next;
 }judges;
+
+/* ADT for votes of states*/
+
+typedef struct vote {
+    int stateGiver;
+    int votes; // a counter
+    struct vote* next_vote;
+}vote;
+
 
 /* ADT for states of the eurovision */
 
@@ -41,7 +48,7 @@ typedef struct states {
     int id;
     const char* name;
     const char* songName;
-    int *vote;
+    vote *vote;
     struct states *next;
 }states;
 
@@ -53,15 +60,9 @@ struct eurovision_t {
     struct states* State;
 };
 
-
-
-
-/* eurovision possible results*/
-
-
-/**
+/*
  * eurovisionDestroy: deletes everything in a eurovision
- * @param 8urovision   the eurovision which is deleted
+ * @param eurovision   the eurovision which is deleted
  */
 void eurovisionDestroy(Eurovision eurovision){
     listDestroy((List)(eurovision->Judge));
@@ -71,8 +72,7 @@ void eurovisionDestroy(Eurovision eurovision){
 /**
  * eurovisionCreate: creates a new eurovision
  *
- * returns NULL in case of failiure
- *         ,or a eurovision in case of success.
+ * returns NULL in case of failure, or a eurovision in case of success.
  */
 Eurovision eurovisionCreate(){
     Eurovision eurovision = malloc(sizeof(Eurovision));
@@ -85,18 +85,41 @@ Eurovision eurovisionCreate(){
     return eurovision;
 }
 
-
 //
-
-static bool checkStateValid(Eurovision eurovision, int state_id){
+static int findState(Eurovision eurovision , int stateId){
     struct states* temp_state = eurovision->State;
+    int index=0;
     while(temp_state != NULL){
-        if (temp_state->id == state_id)
-            return true;
-        else
-            temp_state = eurovision->State->next;
+        if (temp_state->id == stateId)
+            return index;
+        else {
+            temp_state = temp_state->next;
+            index++;
+        }
     }
-    return false;
+    return -1;
+}
+
+
+static int findJudge(Eurovision eurovision , int JudgeId){
+    judges* temp_Judge = eurovision->Judge;
+    int index=0;
+    while(temp_Judge != NULL){
+        if (temp_Judge->id == JudgeId)
+            return index;
+        else {
+            temp_Judge = temp_Judge->next;
+            index++;
+        }
+    }
+    return -1;
+}
+
+static bool checkStateExists(Eurovision eurovision, int state_id){
+    if (findState(eurovision,state_id) != -1)
+        return true;
+    else
+        return false;
 }
 
 static bool checkJudgeExists (Eurovision eurovision, int judge_id){
@@ -110,9 +133,9 @@ static bool checkJudgeExists (Eurovision eurovision, int judge_id){
     return false;
 }
 
-static bool checkName (const char* judgeName){
-    const char* tempName = judgeName;
-    while(tempName){
+static bool checkName (const char* Name){
+    const char* tempName = Name;
+    while(*tempName){
         if ((*tempName >= 'a' && *tempName <= 'z') || *tempName == ' ') {
             tempName++;
         }
@@ -120,6 +143,60 @@ static bool checkName (const char* judgeName){
             return false;
     }
     return true;
+}
+
+static judges* getToJudge(Eurovision eurovision, int judgeId){
+    judges* next_judge = eurovision->Judge;
+    while(next_judge){
+        if (next_judge->id == judgeId)
+            return next_judge;
+        else
+            next_judge = next_judge->next;
+    }
+    return NULL;
+}
+
+static states* getToState(Eurovision eurovision, int stateId){
+    states* next_state = eurovision->State;
+    while(next_state){
+        if (next_state->id == stateId)
+            return next_state;
+        else
+            next_state = next_state->next;
+    }
+    return NULL;
+}
+
+static vote* getToVote(states* gettingState, int givingState){
+    vote* next_vote = gettingState->vote;
+    while(next_vote) {
+        if (next_vote->stateGiver == givingState)
+            return next_vote;
+
+        else
+            next_vote = next_vote->next_vote;
+    }
+    return  NULL;
+}
+
+static judges* placeToPutJudge (judges* judge){
+    if (judge == NULL)
+        return judge;
+    else
+        placeToPutJudge(judge->next);
+
+    return judge;
+
+}
+
+static states* placeToPutState (states* state){
+    if (state == NULL)
+        return state;
+    else
+        placeToPutState(state->next);
+
+    return state;
+
 }
 
 
@@ -150,32 +227,24 @@ EurovisionResult eurovisionAddJudge(Eurovision eurovision, int judgeId,const cha
         return EUROVISION_JUDGE_ALREADY_EXIST;
 
     //check the votes of the judge:
-    int* tempResult = judgeResults;
-    bool flag;
-    while(tempResult != NULL){
-        flag = checkStateValid(eurovision, *tempResult);
-        if (flag)
-            break;
-        else
-            tempResult++;
-    }
-    if (!tempResult)
+    if(checkStateExists(eurovision, *judgeResults))
         return EUROVISION_STATE_NOT_EXIST;
 
     //check judge name:
     if (!checkName(judgeName))
         return EUROVISION_INVALID_NAME;
+
     //Creating the judge:
-    //not sure how to work with judge->next
-    eurovision->Judge = malloc(sizeof(eurovision->Judge));
-    if (eurovision->Judge == NULL) {
+    judges* Judge = placeToPutJudge(eurovision->Judge);
+    Judge = malloc(sizeof(eurovision->Judge));
+    if (Judge == NULL) {
         eurovisionDestroy(eurovision);
         return EUROVISION_OUT_OF_MEMORY;
     }
-    eurovision->Judge->id = judgeId;
-    eurovision->Judge->name = judgeName;
-    eurovision->Judge->vote = judgeResults;
-    eurovision->Judge->next = NULL;
+    Judge->id = judgeId;
+    Judge->name = judgeName;
+    Judge->vote = judgeResults;
+    Judge->next = NULL;
     return EUROVISION_SUCCESS;
 }
 
@@ -185,15 +254,33 @@ EurovisionResult eurovisionAddJudge(Eurovision eurovision, int judgeId,const cha
  * @param stateName  the name of the country          CREATES A COPY OF THE ARRAYS
  * @param songName  the song of the country
  * @param stateId    they asked for this?
- * @return returns EUROVISION_STATE_ALREADY_EXIST in case the country is already in the eaurovision
+ * @return returns EUROVISION_STATE_ALREADY_EXIST in case the country is already in the eurovision
  *         or EUROVISION_INVALID_ID in case of an invalid id
  *         or EUROVISION_INVALID_NAME in case of an invalid name
  *         or EUROVISION_SUCCESS in case of success
  */
- EurovisionResult eurovisionAddState(Eurovision eurovision,int stateId, const char* stateName,
-         const char* songName)
-{
-     return  EUROVISION_SUCCESS;
+ EurovisionResult eurovisionAddState(Eurovision eurovision,int stateId, const char* stateName, const char* songName){
+
+     if (eurovision == NULL)
+         return EUROVISION_NULL_ARGUMENT;
+     if (stateId <= 0)
+         return EUROVISION_INVALID_ID;
+     if (checkStateExists(eurovision, stateId))
+         return EUROVISION_STATE_ALREADY_EXIST;
+     if (!checkName(stateName))
+         return EUROVISION_INVALID_NAME;
+
+    states* State = placeToPutState(eurovision->State);
+    State = malloc(sizeof(eurovision->State));
+    if (State == NULL){
+        eurovisionDestroy(eurovision);
+        return EUROVISION_OUT_OF_MEMORY;
+    }
+    State->id = stateId;
+    State->name = stateName;
+    State->songName = songName;
+    State->next = NULL;
+    return  EUROVISION_SUCCESS;
 }
 
  /**
@@ -204,9 +291,45 @@ EurovisionResult eurovisionAddJudge(Eurovision eurovision, int judgeId,const cha
   *         or EUROVISION_STATE_NOT_EXIST in case there is no state with said id
   *         or EUROVISION_SUCCESS in case of success
   */
+
+ /*
+  * Noam's version
  EurovisionResult eurovisionRemoveState(Eurovision eurovision, int stateId){
+    if (eurovision == NULL)
+        return EUROVISION_NULL_ARGUMENT;
+    if (stateId <= 0)
+        return EUROVISION_INVALID_ID;
+     if(!checkStateExists(eurovision, stateId))
+         return EUROVISION_STATE_NOT_EXIST;
+     states* State = getToState(eurovision, stateId);
+     listDestroy((List)State);
      return EUROVISION_SUCCESS;
  }
+*/
+
+EurovisionResult eurovisionRemoveState(Eurovision eurovision, int stateId){
+    if (eurovision == NULL)
+        return EUROVISION_NULL_ARGUMENT;
+    if (eurovision->State == NULL)
+        return EUROVISION_STATE_NOT_EXIST;
+    if (stateId <= 0)
+        return EUROVISION_INVALID_ID;
+    int index = findState(eurovision,stateId);
+    states *previous_state = eurovision->State;
+    if (index == -1)
+        return EUROVISION_STATE_NOT_EXIST;
+    for (int i=0;i<index-1;i++){
+        previous_state = previous_state->next;
+    }
+    free(previous_state->next->vote);
+    free(previous_state->next);
+    states *temp_state = previous_state->next;
+    previous_state->next=temp_state->next;
+    free(temp_state);
+    return EUROVISION_SUCCESS;
+}
+
+
 
 /** eurovisionRemoveJudge: removes a judge from the eurovision
  *  @param eurovision the eurovision the judge is getting removed from
@@ -215,9 +338,44 @@ EurovisionResult eurovisionAddJudge(Eurovision eurovision, int judgeId,const cha
  *          or EUROVISION_JUDGE_NOT_EXIST in case the judge is not the eurovision
  *          or EUROVISION_SUCCESS in case or success
  */
+
+/*
+ * Noam's version:
  EurovisionResult eurovisionRemoveJudge(Eurovision eurovision, int judgeId){
-     return EUROVISION_SUCCESS;
+    if (eurovision == NULL)
+        return EUROVISION_NULL_ARGUMENT;
+    if (judgeId <= 0)
+        return EUROVISION_INVALID_ID;
+     if (!checkJudgeExists(eurovision, judgeId))
+         return EUROVISION_JUDGE_NOT_EXIST;
+     judges* Judge = getToJudge(eurovision, judgeId);
+     listDestroy((List)Judge);
+    return EUROVISION_SUCCESS;
  }
+
+*/
+
+EurovisionResult eurovisionRemoveJudge(Eurovision eurovision, int judgeId){
+    if (eurovision == NULL)
+        return EUROVISION_NULL_ARGUMENT;
+    if (eurovision->Judge == NULL)
+        return EUROVISION_JUDGE_NOT_EXIST;
+    if (judgeId <= 0)
+        return EUROVISION_INVALID_ID;
+    int index = findJudge(eurovision,judgeId);
+    judges *previous_judge = eurovision->Judge;
+    if (index == -1)
+        return EUROVISION_JUDGE_NOT_EXIST;
+    for (int i=0;i<index-1;i++){
+        previous_judge = previous_judge->next;
+    }
+    free(previous_judge->next->vote);
+    free(previous_judge->next);
+    judges *temp_judge = previous_judge->next;
+    previous_judge->next=temp_judge->next;
+    free(temp_judge);
+    return EUROVISION_SUCCESS;
+}
 
 /**
  * eurovisionAddVote: adds a civilian's vote in the country poles
@@ -226,11 +384,18 @@ EurovisionResult eurovisionAddJudge(Eurovision eurovision, int judgeId,const cha
  * @param stateTaker the id or the state which is getting voted
  * @return returns EUROVISION_INVALID_ID if there is a problem with one of the id
  *         or EUROVISION_STATE_NOT_EXIST in case one of the ids do not exist in the eurovision
- *         or EUROVISION_SAME_STATE in case they tried to vote for themselfs (<--it is a word and it IS spelt like that)
+ *         or EUROVISION_SAME_STATE in case they tried to vote for themselves (<--it is a word and it IS spelt like that)
  *         or EUROVISION_SUCCESS in case of success
  */
 EurovisionResult eurovisionAddVote(Eurovision eurovision, int stateGiver, int stateTaker){
-    return EUROVISION_SUCCESS;
+    //check all necessities as usual
+    states* taker = getToState(eurovision, stateTaker);
+    taker->vote = getToVote(taker, stateGiver);
+    if (taker->vote == NULL)
+    if(taker->vote->votes >= 1 ) {
+        taker->vote->votes++;
+        return EUROVISION_SUCCESS;
+    }
 }
 
 /**
